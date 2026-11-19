@@ -152,7 +152,11 @@ export function driveStep(game, v, dt, input) {
 
   const speedRatio = v.speed / def.topSpeed;
   if (Math.abs(v.speed) > 12) {
-    const steerAuthority = Math.min(1, Math.abs(v.speed) / 90);
+    // Steering bites quickly at town speeds but eases off near top speed, so
+    // a fast car tracks straight instead of twitching with every key tap.
+    const lowSpeedBite = Math.min(1, Math.abs(v.speed) / 90);
+    const highSpeedCalm = 1 - 0.42 * Math.min(1, speedRatio * speedRatio);
+    const steerAuthority = lowSpeedBite * highSpeedCalm;
     v.angle += input.steer * def.grip * steerAuthority * dt * (v.speed >= 0 ? 1 : -1);
   }
 
@@ -284,13 +288,8 @@ function trafficInput(game, car, dt) {
     while (diff < -Math.PI) diff += Math.PI * 2;
     return { throttle: 0.5, steer: Math.max(-1, Math.min(1, diff * 2.2)) };
   }
-  const off = laneOffset(car.angle);
-  const laneX = (Math.abs(Math.cos(car.angle)) > 0.7
-    ? Math.round(car.y / 1) // horizontal travel: lane is a y offset from avenue centre
-    : 0);
-  void laneX;
-  const driftX = (car.x + off.x * 0) - car.x; // lane keeping handled by spawn offsets; small correction below
-  void driftX;
+  // Lane keeping is handled by the spawn offsets and the road re-centring
+  // above, so cruising traffic simply holds its heading.
   return { throttle, steer: 0 };
 }
 

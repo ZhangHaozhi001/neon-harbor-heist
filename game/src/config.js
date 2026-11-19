@@ -15,7 +15,7 @@ export const PLAYER = {
   startY: 1560,
 };
 
-export const CAMERA = { lookAhead: 0.35, stiffness: 5.5 };
+export const CAMERA = { lookAhead: 0.45, stiffness: 5.5 };
 
 export const WANTED = {
   max: 5,
