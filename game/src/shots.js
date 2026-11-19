@@ -67,6 +67,7 @@ function stageChase(game) {
     game.vehicles.push(cop);
   }
   setStars(game, 3);
+  game.police.seen = true; // patrol cars are right on top of the player in this scene
   game.police.bust = 0.35;
   game.cash = 2840;
   game.objectiveCache = { text: 'Lose the police before delivering', x: null, y: null, dist: null };
