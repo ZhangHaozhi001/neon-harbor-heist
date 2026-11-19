@@ -28,7 +28,7 @@ Everything is hand-written vanilla JavaScript on a single canvas: no libraries, 
 | E | Enter / exit / steal vehicle, talk to Marisol |
 | Shift | Sprint |
 | Mouse | Aim |
-| Click / Space | Shoot |
+| Click / Space | Shoot (on foot) / handbrake (in a car: hold to swing tight turns) |
 | R | Reload |
 | Esc / P | Pause |
 | M | Mute |

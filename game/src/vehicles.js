@@ -150,13 +150,19 @@ export function driveStep(game, v, dt, input) {
   // Rolling drag.
   if (input.throttle === 0) v.speed *= Math.max(0, 1 - dt * 0.7);
 
+  // Handbrake (player only — AI drivers never set it): scrubs speed and
+  // nearly doubles steering authority, so a fast car can be swung around a
+  // corner instead of sailing past it. Costs momentum, lays skid marks.
+  const handbrake = Boolean(input.handbrake) && Math.abs(v.speed) > 50;
+  if (handbrake) v.speed *= Math.max(0, 1 - dt * 1.15);
+
   const speedRatio = v.speed / def.topSpeed;
   if (Math.abs(v.speed) > 12) {
     // Steering bites quickly at town speeds but eases off near top speed, so
     // a fast car tracks straight instead of twitching with every key tap.
     const lowSpeedBite = Math.min(1, Math.abs(v.speed) / 90);
     const highSpeedCalm = 1 - 0.42 * Math.min(1, speedRatio * speedRatio);
-    const steerAuthority = lowSpeedBite * highSpeedCalm;
+    const steerAuthority = lowSpeedBite * highSpeedCalm * (handbrake ? 1.85 : 1);
     v.angle += input.steer * def.grip * steerAuthority * dt * (v.speed >= 0 ? 1 : -1);
   }
 
@@ -167,7 +173,8 @@ export function driveStep(game, v, dt, input) {
   v.skidTimer -= dt;
   const hardCorner = Math.abs(input.steer) > 0.6 && Math.abs(speedRatio) > 0.55;
   const hardBrake = input.throttle < 0 && v.speed > 140;
-  if ((hardCorner || hardBrake) && v.skidTimer <= 0) {
+  const handbrakeSlide = handbrake && Math.abs(input.steer) > 0.25;
+  if ((hardCorner || hardBrake || handbrakeSlide) && v.skidTimer <= 0) {
     v.skidTimer = 0.03;
     const back = { x: v.x - Math.cos(v.angle) * v.length * 0.36, y: v.y - Math.sin(v.angle) * v.length * 0.36 };
     const side = { x: Math.cos(v.angle + Math.PI / 2) * v.width * 0.36, y: Math.sin(v.angle + Math.PI / 2) * v.width * 0.36 };

@@ -346,7 +346,7 @@ export function drawTitleScreen(ctx, game) {
   ctx.font = `15px ${FONT}`;
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   const controls = [
-    'WASD / Arrows — move & drive      E — enter / exit / steal car      Shift — sprint',
+    'WASD / Arrows — move & drive      E — enter / exit / steal car      Shift — sprint      Space (in car) — handbrake',
     'Mouse — aim      Click / Space — shoot      R — reload      Esc / P — pause      M — mute',
   ];
   controls.forEach((line, i) => ctx.fillText(line, VIEW.width / 2, 402 + i * 24));

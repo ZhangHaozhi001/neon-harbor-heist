@@ -205,6 +205,7 @@ function updatePlayer(game, input, dt) {
     const driveInput = {
       throttle: (input.held.up ? 1 : 0) + (input.held.down ? -1 : 0),
       steer: (input.held.right ? 1 : 0) + (input.held.left ? -1 : 0),
+      handbrake: input.held.fire,
     };
     driveStep(game, v, dt, driveInput);
     p.x = v.x;
@@ -375,7 +376,7 @@ function stepGame(game, input, dt) {
   game.objectiveCache = currentObjective(game);
 
   // Interact hint text.
-  if (game.player.vehicle) game.interactHint = 'E — exit vehicle';
+  if (game.player.vehicle) game.interactHint = 'E — exit vehicle · Space — handbrake';
   else if (game.mission.phase === 'idle' && game.missionIndex < MISSIONS.length && nearGarage(game)) {
     game.interactHint = `E — talk to Marisol: ${MISSIONS[game.missionIndex].title}`;
   } else if (nearestVehicle(game, 62)) game.interactHint = 'E — enter / steal vehicle';
