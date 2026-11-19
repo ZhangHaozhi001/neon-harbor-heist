@@ -181,7 +181,10 @@ export function driveStep(game, v, dt, input) {
   if (hit) {
     impact = Math.abs(v.speed);
     if (impact > 60) {
-      damageVehicle(game, v, impact * 0.09, nx, ny);
+      // Patrol cars chase in straight lines through the block grid and would
+      // wreck themselves on walls within seconds at the full rate — their
+      // reinforced frames take building hits at a third of the damage.
+      damageVehicle(game, v, impact * 0.09 * (v.driver === 'police' ? 0.35 : 1), nx, ny);
       game.effects.addShake(Math.min(9, impact * 0.03));
       game.audio.crash(Math.abs(v.speed) / def.topSpeed);
       game.onVehicleCrash(v, impact, nx, ny);
@@ -203,8 +206,10 @@ export function driveStep(game, v, dt, input) {
     const midX = (v.x + other.x) / 2;
     const midY = (v.y + other.y) / 2;
     if (rel > 55) {
-      damageVehicle(game, v, rel * 0.06, midX, midY);
-      damageVehicle(game, other, rel * 0.06, midX, midY);
+      // Patrol cars take half car-to-car damage (see the building note):
+      // at full mutual damage two traffic bumps kill a chasing unit.
+      damageVehicle(game, v, rel * 0.06 * (v.driver === 'police' ? 0.5 : 1), midX, midY);
+      damageVehicle(game, other, rel * 0.06 * (other.driver === 'police' ? 0.5 : 1), midX, midY);
       game.effects.sparks(midX, midY, 10);
       game.effects.addShake(Math.min(10, rel * 0.035));
       game.audio.crash(rel / 300);

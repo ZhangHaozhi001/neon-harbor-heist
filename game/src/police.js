@@ -85,7 +85,7 @@ function spawnPoliceCar(game) {
     y = Math.max(70, Math.min(1700, y));
     const car = makeVehicle('police', x, y, angle, '#e8ecf2');
     car.driver = 'police';
-    car.ai = { mode: 'chase' };
+    car.ai = { mode: 'chase', bornAt: game.time };
     game.vehicles.push(car);
     return;
   }
@@ -102,7 +102,7 @@ function despawnDistantPolice(game) {
   }
 }
 
-function policeInput(game, car) {
+function policeInput(game, car, dt) {
   const target = game.player.vehicle || game.player;
   const tx = target.x + Math.cos(target.angle || 0) * (target.speed || 0) * 0.35;
   const ty = target.y + Math.sin(target.angle || 0) * (target.speed || 0) * 0.35;
@@ -118,6 +118,11 @@ function policeInput(game, car) {
   if (Math.abs(diff) > 2.4) throttle = -0.8; // facing away: reverse out
   else if (Math.abs(diff) > 1.2) throttle = 0.35;
   if (dist < 60) throttle = 0.25;            // sit on the player to fill the bust meter
+  // Arriving hot is how patrol cars die: at full speed they overshoot the
+  // player by hundreds of units, loop back through traffic and walls, and
+  // wreck themselves before the bust meter can fill. Inside 260 units the
+  // approach speed is capped by distance — brake if the car is over it.
+  if (dist < 260 && car.speed > Math.max(80, dist * 1.7)) throttle = -0.75;
   // One in three units aims for a blocking spot ahead of the player instead.
   if (car.id % 3 === 0 && game.player.vehicle) {
     const bx = game.player.x + Math.cos(game.player.vehicle.angle) * 190;
@@ -128,6 +133,69 @@ function policeInput(game, car) {
     while (bDiff < -Math.PI) bDiff += Math.PI * 2;
     if (Math.hypot(bx - car.x, by - car.y) > 70) steer = Math.max(-1, Math.min(1, bDiff * 2.4));
   }
+  // Unstick: the chase steers straight at the player, so a patrol car that
+  // noses into a building with the player dead ahead gets steer ~0 and can
+  // never turn away — it grinds against the wall forever (speed oscillating
+  // as collision pushback resets it) and the chase, and the bust meter with
+  // it, dies. Detect it by position, not speed: if the car has not moved
+  // 26 units in 1.1 seconds while it still has ground to cover, back out
+  // with the wheel hard over so the next approach angles toward a corner
+  // instead of the same patch of wall. Sitting on the player to fill the
+  // bust meter is the goal state, not a wedge, so a car whose meter is
+  // actually filling is exempt — but no wider: a car grinding on an
+  // obstacle just outside bust range fills nothing and must still recover.
+  const ai = car.ai || (car.ai = { mode: 'chase' });
+  if (ai.unstick > 0) {
+    ai.unstick -= dt;
+    return { throttle: -0.85, steer: (car.id % 2 === 0 ? 1 : -1) * 0.8 };
+  }
+  // Progress bookkeeping for the escalation below: closing real distance on
+  // the player clears the stuck count; wedging repeatedly builds it up.
+  if (ai.bestDist === undefined || dist < ai.bestDist - 20) {
+    ai.bestDist = dist;
+    ai.bestTime = game.time;
+    ai.stuckCount = 0;
+  }
+  // Recovery steering runs uninterrupted once chosen (the recycle pass in
+  // updatePolice is the backstop if even this makes no progress).
+  if (ai.recover) {
+    const rdx = ai.recover.x - car.x;
+    const rdy = ai.recover.y - car.y;
+    if (Math.hypot(rdx, rdy) < 50) ai.recover = null;
+    else {
+      const rWant = Math.atan2(rdy, rdx);
+      let rDiff = rWant - car.angle;
+      while (rDiff > Math.PI) rDiff -= Math.PI * 2;
+      while (rDiff < -Math.PI) rDiff += Math.PI * 2;
+      return {
+        throttle: Math.abs(rDiff) > 2.4 ? -0.8 : 1,
+        steer: Math.max(-1, Math.min(1, rDiff * 2.4)),
+      };
+    }
+  }
+  if (ai.anchorX === undefined) { ai.anchorX = car.x; ai.anchorY = car.y; ai.anchorTime = 0; }
+  if (Math.hypot(car.x - ai.anchorX, car.y - ai.anchorY) > 26) {
+    ai.anchorX = car.x; ai.anchorY = car.y; ai.anchorTime = 0;
+  } else if (game.police.bust <= 0.02) {
+    ai.anchorTime += dt;
+    if (ai.anchorTime > 1.1) {
+      ai.anchorX = car.x; ai.anchorY = car.y; ai.anchorTime = 0;
+      ai.unstick = 0.45;
+      ai.stuckCount = (ai.stuckCount || 0) + 1;
+      if (ai.stuckCount >= 2 && !ai.recover) {
+        // Backing out is not enough — the direct line re-wedges on the same
+        // building. Route via the avenue intersection nearest the way to
+        // the player instead: intersections are always open ground, and
+        // the chase resumes from the road network, not a wall face.
+        ai.stuckCount = 0;
+        const mx = car.x + (target.x - car.x) * 0.4;
+        const my = car.y + (target.y - car.y) * 0.4;
+        const near = (arr, v) => arr.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+        ai.recover = { x: near(AVENUES_X, mx), y: near(AVENUES_Y, my) };
+      }
+      return { throttle: -0.85, steer: (car.id % 2 === 0 ? 1 : -1) * 0.8 };
+    }
+  } else ai.anchorTime = 0;
   return { throttle, steer };
 }
 
@@ -142,11 +210,26 @@ export function updatePolice(game, dt) {
     game.policeSpawnTimer = 1.6;
   }
   if (police.stars === 0) despawnDistantPolice(game);
+  const p = game.player;
+
+  // Recycle hopeless units: a patrol car that has made no approach progress
+  // for 12 seconds and is still far away is wedged in the block grid beyond
+  // local recovery. Pull it and let the spawner send a fresh unit from a
+  // different avenue — a chasing unit that keeps closing never triggers this.
+  for (let i = game.vehicles.length - 1; i >= 0; i -= 1) {
+    const car = game.vehicles[i];
+    if (car.driver !== 'police' || car.dead || !car.ai) continue;
+    if (car.ai.bestTime === undefined) continue;
+    const dx = car.x - p.x;
+    const dy = car.y - p.y;
+    if (game.time - car.ai.bestTime > 12 && dx * dx + dy * dy > 200 * 200) {
+      game.vehicles.splice(i, 1);
+    }
+  }
 
   // Vision: a live police car within 330 units sees the player.
   let seen = false;
   let busting = false;
-  const p = game.player;
   const playerSpeed = p.vehicle ? Math.abs(p.vehicle.speed) : Math.hypot(p.vx || 0, p.vy || 0);
   for (const car of game.vehicles) {
     if (car.driver !== 'police') continue;
@@ -156,7 +239,7 @@ export function updatePolice(game, dt) {
     const d2 = dx * dx + dy * dy;
     if (d2 < 330 * 330) seen = true;
     if (d2 < WANTED.bustRadius * WANTED.bustRadius && playerSpeed < 55) busting = true;
-    driveStep(game, car, dt, policeInput(game, car));
+    driveStep(game, car, dt, policeInput(game, car, dt));
   }
   police.seen = seen;
   if (seen) police.unseenTimer = 0;
