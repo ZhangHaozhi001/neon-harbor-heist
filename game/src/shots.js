@@ -1,13 +1,13 @@
 // Deterministic screenshot scenes behind ?shot=cover|drive|chase|mission.
 // Each scene stages real game state — real vehicles, real police, the real
-// mission dialogue — at fixed positions, runs a few simulation steps so
+// mission machinery — at fixed positions, runs a few simulation steps so
 // particles and timers settle, and returns the screen name main.js should
 // draw. Same seed, same frame, every time.
 
 import { VIEW, GARAGE } from './config.js';
 import { makeVehicle } from './vehicles.js';
 import { setStars } from './police.js';
-import { startMission, MISSIONS } from './missions.js';
+import { startMission, activateMission, currentObjective, MISSIONS } from './missions.js';
 
 function snapCamera(game, x, y) {
   game.camera.x = Math.max(0, Math.min(2600 - VIEW.width, x - VIEW.width / 2));
@@ -21,27 +21,71 @@ function settle(game, steps) {
   }
 }
 
-/** Cover: the title screen over a slow aerial view of the city centre. */
+/** Cover: mid-delivery in the real first job — the stolen Comet at speed on
+ * the palm avenue, two stars up, a patrol car on the tail, the objective
+ * banner and the minimap all live in one frame. */
 function stageCover(game) {
-  game.player.x = 1300;
-  game.player.y = 900;
-  snapCamera(game, 1300, 880);
-  settle(game, 30);
-  return 'title';
+  startMission(game);
+  activateMission(game);
+  game.mission.dialogue = null; // the scene is mid-job, not mid-conversation
+  const car = game.mission.data.targetCar;
+  // Clear ambient traffic out of the hero car's patch of avenue so nothing
+  // spawns on top of it; the staged cop and taxi are added afterwards.
+  game.vehicles = game.vehicles.filter(
+    (v) => v === car || Math.hypot(v.x - 2080, v.y - 1210) > 320,
+  );
+  car.x = 2080;
+  car.y = 1210;
+  car.angle = Math.PI / 2;
+  car.speed = 265;
+  car.driver = 'player';
+  game.player.vehicle = car;
+  game.player.x = car.x;
+  game.player.y = car.y;
+  const cop = makeVehicle('police', 2080, 1015, Math.PI / 2, '#e8ecf2');
+  cop.driver = 'police';
+  cop.speed = 240;
+  game.vehicles.push(cop);
+  const taxi = makeVehicle('taxi', 2195, 1470, -Math.PI / 2, '#e8b93c');
+  taxi.driver = 'traffic';
+  taxi.speed = 120;
+  taxi.ai = { cruise: 0.5, turnCooldown: 0 };
+  game.vehicles.push(taxi);
+  setStars(game, 2);
+  game.police.seen = true;
+  game.cash = 450;
+  game.objectiveCache = currentObjective(game);
+  // A short skid trail behind the Comet sells the speed.
+  for (let i = 1; i <= 7; i += 1) {
+    game.effects.addSkid(car.x - 16, car.y - i * 26);
+    game.effects.addSkid(car.x + 16, car.y - i * 26);
+  }
+  snapCamera(game, car.x, car.y + 40);
+  settle(game, 20);
+  return 'play';
 }
 
 /** Drive: the player mid-drive downtown, traffic around, HUD and minimap live. */
 function stageDrive(game) {
-  const car = makeVehicle('comet', 1300, 1020, 0, '#d94f6a');
+  const car = makeVehicle('comet', 1300, 1020, 0.1, '#d94f6a');
   car.driver = 'player';
   car.speed = 235;
   game.vehicles.push(car);
   game.player.vehicle = car;
   game.player.x = car.x;
   game.player.y = car.y;
+  const van = makeVehicle('van', 1300, 830, Math.PI / 2, '#9aa5b1');
+  van.driver = 'traffic';
+  van.speed = 90;
+  van.ai = { cruise: 0.45, turnCooldown: 0 };
+  game.vehicles.push(van);
   game.cash = 1250;
   game.missionIndex = 1;
   game.toast('Downtown Port Marlowe');
+  for (let i = 1; i <= 6; i += 1) {
+    game.effects.addSkid(car.x - i * 30, car.y - 15 + i * 3);
+    game.effects.addSkid(car.x - i * 30, car.y + 15 + i * 3);
+  }
   snapCamera(game, car.x + 80, car.y);
   settle(game, 20);
   return 'play';
@@ -92,6 +136,7 @@ function stageMission(game) {
 }
 
 export function stageShot(name, game) {
+  game.tutorial.active = false; // staged frames never show the first-run guide
   if (name === 'drive') return stageDrive(game);
   if (name === 'chase') return stageChase(game);
   if (name === 'mission') return stageMission(game);
