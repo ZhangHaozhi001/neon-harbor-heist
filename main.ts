@@ -66,3 +66,6 @@ writeFileSync(
     game_path_max_bytes: 1000,
   }),
 );
+
+// One line in the build log so a human skimming it knows what was handed in.
+console.log(`[${ENTRY_TITLE}] dossier written: ${ENTRY_SUMMARY}`);
