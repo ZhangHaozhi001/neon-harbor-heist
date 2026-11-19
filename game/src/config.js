@@ -1,61 +1,69 @@
-// Every tuning number and colour in one place. The playfield is a fixed 1280x720 logical area;
-// the renderer scales it to the window, so no rule below depends on the screen size.
+// Neon Harbor Heist — every tuning number in one place.
+// The world is a fixed 2600x2000 map of Port Marlowe; the camera shows a
+// 1280x760 window into it. Nothing outside this file hard-codes a balance value.
 
-export const FIELD = { width: 1280, height: 720, groundY: 664 };
-
-/** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
+export const WORLD = { width: 2600, height: 2000 };
+export const VIEW = { width: 1280, height: 760 };
 export const STEP = 1 / 60;
 
 export const PLAYER = {
-  width: 72,
-  height: 24,
-  speed: 560,
-  invulnerable: 1.5,
+  radius: 13,
+  walkSpeed: 150,
+  sprintSpeed: 235,
+  maxHealth: 100,
+  startX: 640,
+  startY: 1560,
 };
 
-export const LIVES = 3;
+export const CAMERA = { lookAhead: 0.35, stiffness: 5.5 };
 
-export const BLOCK = {
-  minWidth: 40,
-  maxWidth: 110,
-  height: 36,
-  speed: 240,
-  speedPerLevel: 30,
-  speedJitter: 90,
-  interval: 0.55,
-  intervalScale: 0.88,
-  minInterval: 0.14,
-  dodgePoints: 1,
+export const WANTED = {
+  max: 5,
+  decaySeconds: 14,      // unseen time per star before one star fades
+  bustRadius: 46,        // police car this close to a slow/on-foot player fills the bust meter
+  bustFill: 0.55,        // per second
+  bustDrain: 0.8,
 };
 
-export const COIN = {
-  size: 24,
-  speed: 190,
-  speedPerLevel: 14,
-  interval: 1.4,
-  intervalJitter: 0.8,
-  points: 10,
+export const GUN = {
+  magazine: 12,
+  reserveStart: 48,
+  reloadSeconds: 1.1,
+  fireCooldown: 0.16,
+  range: 430,
+  damage: 34,
 };
 
-/** Seconds of play per level, and the last level: speeds and spawn rates stop growing there. */
-export const LEVEL = { seconds: 12, max: 12 };
-
-/** How many falling things can exist at once; the pool is allocated once, at boot. */
-export const POOL_SIZE = 64;
-
-export const PALETTE = {
-  backdrop: '#11141b',
-  sky: '#1b1f2a',
-  ground: '#2a3040',
-  player: '#4fc3f7',
-  block: '#e5534b',
-  coin: '#f2c94c',
-  panel: '#252b38',
-  text: '#eef1f5',
-  muted: '#8b93a3',
+export const VEHICLE_TYPES = {
+  sedan:  { name: 'Sedan',   width: 44, length: 92,  topSpeed: 300, accel: 210, grip: 3.4, health: 120, color: '#5b8dd9' },
+  taxi:   { name: 'Taxi',    width: 44, length: 92,  topSpeed: 290, accel: 200, grip: 3.4, health: 120, color: '#e8b93c' },
+  comet:  { name: 'Comet',   width: 42, length: 96,  topSpeed: 430, accel: 330, grip: 4.2, health: 110, color: '#d94f6a' },
+  van:    { name: 'Van',     width: 48, length: 104, topSpeed: 250, accel: 170, grip: 2.9, health: 170, color: '#9aa5b1' },
+  truck:  { name: 'Cash Truck', width: 50, length: 116, topSpeed: 235, accel: 150, grip: 2.6, health: 260, color: '#3f7d5a' },
+  police: { name: 'Patrol',  width: 44, length: 94,  topSpeed: 385, accel: 300, grip: 4.0, health: 150, color: '#e8ecf2' },
 };
 
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+export const TRAFFIC_COUNT = 16;
+export const PARKED_COUNT = 14;
+export const PED_COUNT = 26;
+export const CASH_CRATE_COUNT = 10;
+export const CASH_CRATE_VALUE = 75;
 
-/** Where the best score is kept between visits (this browser only). */
-export const BEST_KEY = 'block-dodger.best';
+export const GARAGE = { x: 300, y: 420, radius: 60 };
+export const HIDEOUT = { x: 2380, y: 300, radius: 70 };
+
+export const SAVE_KEY = 'neon-harbor-heist.save.v1';
+
+export const FONT = '"Segoe UI", system-ui, -apple-system, sans-serif';
+
+export const COLORS = {
+  water: '#14506e',
+  sand: '#d9c184',
+  grass: '#3e7d46',
+  park: '#4c9153',
+  road: '#33373d',
+  roadLine: '#c8b45a',
+  sidewalk: '#8f949c',
+  plaza: '#a7a29a',
+  night: '#101623',
+};
