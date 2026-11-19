@@ -180,8 +180,11 @@ function cleanupMissionEntities(game) {
 export function completeMission(game) {
   const m = game.mission;
   const def = m.def;
-  game.cash += def.reward;
-  game.toast(`Job complete: +$${def.reward}`);
+  // A job may stash the amount actually earned (First Wheels pays by the
+  // target car's condition); otherwise the headline reward is paid in full.
+  const paid = m.data.paidReward !== undefined ? m.data.paidReward : def.reward;
+  game.cash += paid;
+  game.toast(`Job complete: +$${paid}`);
   game.audio.sting();
   cleanupMissionEntities(game);
   game.missionIndex += 1;
@@ -241,6 +244,11 @@ export function updateMissions(game, dt) {
     const car = m.data.targetCar;
     if (car && car.dead) { failMission(game, 'the Comet was destroyed'); return; }
     if (p.vehicle === car && near(GARAGE.x, GARAGE.y, GARAGE.radius + 20)) {
+      // Marisol meant it: unscratched pays full, every dent comes off the
+      // price. A wrecked-but-rolling Comet still earns 60% of the headline.
+      const condition = Math.max(0, car.health / car.def.health);
+      m.data.paidReward = Math.round(m.def.reward * (0.6 + 0.4 * condition));
+      game.toast(`Comet delivered at ${Math.round(condition * 100)}% condition`);
       p.vehicle = null;
       car.driver = null;
       car.parked = true;
@@ -255,6 +263,11 @@ export function updateMissions(game, dt) {
     } else if (m.step === 1) {
       m.timer -= dt;
       if (m.timer <= 0) { failMission(game, 'too slow'); return; }
+      if (m.timer <= 30 && !m.data.warnedThirty) {
+        m.data.warnedThirty = true;
+        game.toast('30 seconds left — move!');
+        game.audio.alarm();
+      }
       if (near(CAFE.x, CAFE.y, 55)) completeMission(game);
     }
   } else if (id === 'hot-property') {
