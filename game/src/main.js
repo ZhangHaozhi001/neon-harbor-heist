@@ -68,6 +68,17 @@ export function createGame(saved) {
       moving: false,
     },
     camera: { x: 0, y: 0 },
+    lastFine: 0,
+    // First-run guide: walks a brand-new player through walk -> steal ->
+    // drive -> garage -> first job. Anyone with progress skips it entirely.
+    tutorial: {
+      active: !saved || (saved.missionIndex === 0 && saved.cash === 0 && saved.crates.length === 0),
+      step: 0,
+      moved: 0,
+      target: null,
+      prevX: null,
+      prevY: null,
+    },
     toasts: [],
     objectiveCache: null,
     interactHint: '',
@@ -115,7 +126,10 @@ export function createGame(saved) {
   game.onWantedCleared = () => { game.saveGame(); };
   game.onBusted = () => {
     game.screen = 'busted';
-    game.cash = Math.max(0, game.cash - 200);
+    // Record the fine before deducting it: the BUSTED screen reads lastFine,
+    // and reading the balance after the deduction understated it.
+    game.lastFine = Math.min(200, game.cash);
+    game.cash -= game.lastFine;
     clearWanted(game);
     announce('Busted. The police take $200 in fines.');
     game.audio.fail();
@@ -211,7 +225,7 @@ function updatePlayer(game, input, dt) {
   }
   const ax = input.axisX();
   const ay = input.axisY();
-  const speed = input.held.sprint ? PLAYER.sprintSpeed || 235 : 150;
+  const speed = input.held.sprint ? PLAYER.sprintSpeed : PLAYER.walkSpeed;
   const len = Math.hypot(ax, ay) || 1;
   p.vx = (ax / len) * (ax || ay ? speed : 0);
   p.vy = (ay / len) * (ax || ay ? speed : 0);
@@ -224,6 +238,42 @@ function updatePlayer(game, input, dt) {
   // Wading limit: the sea is off limits on foot.
   // Firing.
   if (input.mouse.down || input.held.fire) tryFire(game, p.aimAngle);
+}
+
+// The first-run guide. Each step completes on the real action it teaches,
+// and the step's target (nearest car, then the garage) feeds the HUD's
+// coach card and edge arrow. Finishing the last step retires the guide.
+function updateTutorial(game) {
+  const t = game.tutorial;
+  if (!t.active) return;
+  const p = game.player;
+  if (t.prevX === null) { t.prevX = p.x; t.prevY = p.y; }
+  if (t.step === 0) {
+    t.target = null;
+    if (!p.vehicle) {
+      t.moved += Math.hypot(p.x - t.prevX, p.y - t.prevY);
+      if (t.moved >= 140) t.step = 1;
+    }
+  } else if (t.step === 1) {
+    const v = nearestVehicle(game, 4000);
+    t.target = v ? { x: v.x, y: v.y } : null;
+    if (p.vehicle) t.step = 2;
+  } else if (t.step === 2) {
+    t.target = null;
+    if (!p.vehicle) t.step = 1; // bailed out before hitting speed: re-teach the steal
+    else if (Math.abs(p.vehicle.speed) * 0.36 >= 70) t.step = 3;
+  } else if (t.step === 3) {
+    t.target = { x: GARAGE.x, y: GARAGE.y };
+    if (nearGarage(game)) t.step = 4;
+  } else if (t.step === 4) {
+    t.target = { x: GARAGE.x, y: GARAGE.y };
+    if (game.mission.phase !== 'idle') {
+      t.active = false;
+      game.toast('Guide complete — Port Marlowe is yours');
+    }
+  }
+  t.prevX = p.x;
+  t.prevY = p.y;
 }
 
 function updateCrates(game) {
@@ -319,6 +369,7 @@ function stepGame(game, input, dt) {
   updatePolice(game, dt);
   updateCombat(game, dt);
   updateMissions(game, dt);
+  updateTutorial(game);
   updateCrates(game);
   game.effects.update(dt);
   game.objectiveCache = currentObjective(game);
@@ -406,6 +457,9 @@ if (shot) {
   canvas.addEventListener('pointerdown', () => {
     game.audio.unlock();
     if (game.screen === 'title' && game.hoverButton) {
+      // The click that starts the game must not leak into it as a held
+      // trigger — otherwise the player's first act is firing their pistol.
+      input.mouse.down = false;
       if (game.hoverButton === 'new') {
         clearSave();
         const fresh = createGame(null);
@@ -417,6 +471,7 @@ if (shot) {
         game.finished = false;
         game.endingShown = false;
         game.mission = fresh.mission;
+        game.tutorial = fresh.tutorial;
         scatterCrates(game);
         game.screen = 'play';
         game.saveGame();

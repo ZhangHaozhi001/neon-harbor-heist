@@ -18,6 +18,7 @@ Everything is hand-written vanilla JavaScript on a single canvas: no libraries, 
 - **Five story jobs** for Marisol Vega, unlocked in order, each with intro/outro dialogue, an objective marker and live distance: *First Wheels*, *Harbor Run*, *Hot Property*, *Pier Pressure*, and *The Marlowe Job* — plus 10 cash crates hidden around town.
 - **Full HUD** — minimap with roads, traffic, police and mission markers, wanted stars, cash, health, ammo and speed, objective text and event toasts.
 - **Title screen, pause, saves** — progress (cash, jobs, crates, position) persists in `localStorage`; Continue from the title screen.
+- **First-run guide** — a five-step in-game coach (walk, steal, drive, meet Marisol, take the job) with an on-screen card and a gold edge arrow that always points at your next target; it retires itself once your first job starts. The city is lit for dusk: lamp glow, neon rooftop signs, beach umbrellas and pier cargo.
 
 ## Controls
 

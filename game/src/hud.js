@@ -130,7 +130,84 @@ export function drawHUD(ctx, game) {
   ctx.textAlign = 'left';
 
   drawMinimap(ctx, game);
+  drawGuide(ctx, game);
   if (game.mission.dialogue) drawDialogue(ctx, game);
+}
+
+// The first-run guide's five steps, in teaching order. main.js owns the
+// step counter and completion checks; this module only words and draws them.
+const TUTORIAL_STEPS = [
+  'WALK — WASD or arrow keys to move',
+  'STEAL A CAR — walk up to any car, press E',
+  'DRIVE — get your car up to 70 km/h',
+  "MEET MARISOL — follow the gold arrow to Vega's Garage",
+  'TAKE THE JOB — press E at the garage',
+];
+
+function drawGuide(ctx, game) {
+  const t = game.tutorial;
+  // The guide's target wins while it runs; afterwards the edge arrow keeps
+  // serving the active mission objective whenever it is off-screen.
+  let target = null;
+  let label = '';
+  if (t && t.active) {
+    target = t.target;
+    label = target ? `${Math.round(Math.hypot(target.x - game.player.x, target.y - game.player.y) / 10)}m` : '';
+    // Coach card, left column under the stats.
+    const text = TUTORIAL_STEPS[t.step];
+    ctx.font = `bold 15px ${FONT}`;
+    const w = ctx.measureText(text).width + 92;
+    panel(ctx, 18, 138, w, 40, 0.8);
+    ctx.fillStyle = '#ffd14a';
+    ctx.font = `bold 12px ${FONT}`;
+    ctx.fillText(`GUIDE ${t.step + 1}/${TUTORIAL_STEPS.length}`, 30, 155);
+    ctx.fillStyle = '#eef1f5';
+    ctx.font = `bold 15px ${FONT}`;
+    ctx.fillText(text, 30, 171);
+  } else if (game.objectiveCache && game.objectiveCache.x !== null && game.objectiveCache.x !== undefined) {
+    target = game.objectiveCache;
+    label = game.objectiveCache.dist !== null && game.objectiveCache.dist !== undefined ? `${game.objectiveCache.dist}m` : '';
+  }
+  if (!target) return;
+  const sx = target.x - game.camera.x;
+  const sy = target.y - game.camera.y;
+  const margin = 44;
+  if (sx >= margin && sx <= VIEW.width - margin && sy >= margin && sy <= VIEW.height - margin) return;
+  // Place the arrow where the ray from screen centre to the target crosses
+  // the inset screen edge — never piled into a corner over the HUD stats.
+  const cx = VIEW.width / 2;
+  const cy = VIEW.height / 2;
+  const angle = Math.atan2(sy - cy, sx - cx);
+  const dx = sx - cx;
+  const dy = sy - cy;
+  const scaleX = dx !== 0 ? (VIEW.width / 2 - margin) / Math.abs(dx) : Infinity;
+  const scaleY = dy !== 0 ? (VIEW.height / 2 - margin) / Math.abs(dy) : Infinity;
+  const scale = Math.min(scaleX, scaleY);
+  let ex = cx + dx * scale;
+  let ey = cy + dy * scale;
+  // Keep the arrow out of the two top corners: the stats column on the left
+  // and the minimap on the right own that space, so slide down past them.
+  if (ey < 196 && (ex < 290 || ex > VIEW.width - 250)) ey = 196;
+  ctx.save();
+  ctx.translate(ex, ey);
+  ctx.rotate(angle);
+  ctx.globalAlpha = 0.75 + Math.sin(game.time * 5) * 0.25;
+  ctx.fillStyle = '#ffd14a';
+  ctx.beginPath();
+  ctx.moveTo(18, 0);
+  ctx.lineTo(-10, -11);
+  ctx.lineTo(-10, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  if (label) {
+    ctx.font = `bold 13px ${FONT}`;
+    ctx.fillStyle = '#ffd14a';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, ex, ey + 30);
+    ctx.textAlign = 'left';
+  }
 }
 
 function drawMinimap(ctx, game) {
@@ -263,6 +340,9 @@ export function drawTitleScreen(ctx, game) {
     'has five jobs that will make you rich — or get you busted. Steal, run, deliver.',
   ];
   story.forEach((line, i) => ctx.fillText(line, VIEW.width / 2, 300 + i * 25));
+  ctx.font = `bold 14px ${FONT}`;
+  ctx.fillStyle = '#ffd14a';
+  ctx.fillText('First time? A five-step guide inside the game walks you to your first job.', VIEW.width / 2, 382);
   ctx.font = `15px ${FONT}`;
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   const controls = [
@@ -304,7 +384,7 @@ export function drawPauseScreen(ctx) {
 export function drawBustedScreen(ctx, game) {
   bigScreen(ctx, 'BUSTED', '#3c6bff', [
     'The Port Marlowe police take your keys, your cash stash',
-    `and $${Math.min(200, game.cash)} in fines. You walk free at dawn.`,
+    `and $${game.lastFine} in fines. You walk free at dawn.`,
   ], 'Click or press Space to keep playing');
 }
 
