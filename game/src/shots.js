@@ -1,79 +1,98 @@
-// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
-// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
-// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
-// is what a short game really looks like and the same seed always gives the same frame.
-import { FIELD, PLAYER, STEP } from './config.js';
-import { EVENT_OVER, KIND_BLOCK } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+// Deterministic screenshot scenes behind ?shot=cover|drive|chase|mission.
+// Each scene stages real game state — real vehicles, real police, the real
+// mission dialogue — at fixed positions, runs a few simulation steps so
+// particles and timers settle, and returns the screen name main.js should
+// draw. Same seed, same frame, every time.
 
-const START_SECONDS = 5;
-const PLAY_SECONDS = 26;
-const END_LIMIT_SECONDS = 600;
-/**
- * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
- * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
- * caught out once the blocks speed up, as a hurried player is.
- */
-const HORIZON_PLAY = 0.7;
-const HORIZON_END = 0.25;
-const SAMPLE = 1 / 30;
-const DIRECTIONS = [0, -1, 1];
-/** Extra room, each side, it keeps between the paddle and a block. */
-const MARGIN = 10;
+import { VIEW, GARAGE } from './config.js';
+import { makeVehicle } from './vehicles.js';
+import { setStars } from './police.js';
+import { startMission, MISSIONS } from './missions.js';
 
-/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
-function timeToHit(state, direction, horizon) {
-  const player = state.player;
-  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
-    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
-    for (let index = 0; index < state.items.length; index += 1) {
-      const item = state.items[index];
-      if (!item.active || item.kind !== KIND_BLOCK) continue;
-      const y = item.y + item.speed * t;
-      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
-    }
-  }
-  return Infinity;
+function snapCamera(game, x, y) {
+  game.camera.x = Math.max(0, Math.min(2600 - VIEW.width, x - VIEW.width / 2));
+  game.camera.y = Math.max(0, Math.min(2000 - VIEW.height, y - VIEW.height / 2));
 }
 
-/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
-function autopilot(state, horizon) {
-  const player = state.player;
-  let coin = null;
-  for (let index = 0; index < state.items.length; index += 1) {
-    const item = state.items[index];
-    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
+function settle(game, steps) {
+  for (let i = 0; i < steps; i += 1) {
+    game.time += 1 / 60;
+    game.effects.update(1 / 60);
   }
-  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
-  const centre = player.x + player.width / 2;
-  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
-  let best = wanted;
-  let bestTime = timeToHit(state, wanted, horizon);
-  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
-    const time = timeToHit(state, DIRECTIONS[index], horizon);
-    if (time > bestTime) {
-      bestTime = time;
-      best = DIRECTIONS[index];
-    }
-  }
-  return best;
 }
 
-/**
- * Set `world` to the named scene (start, play or end; any other name is start) and return the
- * screen to draw over it and the best score to show.
- */
-export function stageShot(name, world) {
-  world.reset();
-  if (name !== 'play' && name !== 'end') {
-    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
-    return { screen: SCREEN_TITLE, best: 0 };
+/** Cover: the title screen over a slow aerial view of the city centre. */
+function stageCover(game) {
+  game.player.x = 1300;
+  game.player.y = 900;
+  snapCamera(game, 1300, 880);
+  settle(game, 30);
+  return 'title';
+}
+
+/** Drive: the player mid-drive downtown, traffic around, HUD and minimap live. */
+function stageDrive(game) {
+  const car = makeVehicle('comet', 1300, 1020, 0, '#d94f6a');
+  car.driver = 'player';
+  car.speed = 235;
+  game.vehicles.push(car);
+  game.player.vehicle = car;
+  game.player.x = car.x;
+  game.player.y = car.y;
+  game.cash = 1250;
+  game.missionIndex = 1;
+  game.toast('Downtown Port Marlowe');
+  snapCamera(game, car.x + 80, car.y);
+  settle(game, 20);
+  return 'play';
+}
+
+/** Chase: three stars, patrol cars closing in, objective banner on screen. */
+function stageChase(game) {
+  const car = makeVehicle('sedan', 1560, 760, 0, '#5b8dd9');
+  car.driver = 'player';
+  car.speed = 190;
+  car.health = 82;
+  game.vehicles.push(car);
+  game.player.vehicle = car;
+  game.player.x = car.x;
+  game.player.y = car.y;
+  const spots = [
+    [1395, 700], [1420, 830], [1730, 800], [1760, 690],
+  ];
+  for (const [x, y] of spots) {
+    const cop = makeVehicle('police', x, y, Math.atan2(car.y - y, car.x - x), '#e8ecf2');
+    cop.driver = 'police';
+    cop.speed = 170;
+    game.vehicles.push(cop);
   }
-  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
-  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
-  for (let index = 0; index < limit / STEP; index += 1) {
-    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
-  }
-  const over = world.state.lives === 0;
-  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
+  setStars(game, 3);
+  game.police.bust = 0.35;
+  game.cash = 2840;
+  game.objectiveCache = { text: 'Lose the police before delivering', x: null, y: null, dist: null };
+  game.effects.sparks(car.x - 40, car.y + 18, 8);
+  snapCamera(game, car.x, car.y);
+  settle(game, 12);
+  return 'play';
+}
+
+/** Mission: on foot at the garage, Marisol's first-job dialogue open. */
+function stageMission(game) {
+  game.player.x = GARAGE.x + 16;
+  game.player.y = GARAGE.y + 26;
+  game.player.vehicle = null;
+  game.missionIndex = 0;
+  startMission(game);
+  void MISSIONS;
+  game.cash = 150;
+  snapCamera(game, GARAGE.x + 120, GARAGE.y + 60);
+  settle(game, 15);
+  return 'play';
+}
+
+export function stageShot(name, game) {
+  if (name === 'drive') return stageDrive(game);
+  if (name === 'chase') return stageChase(game);
+  if (name === 'mission') return stageMission(game);
+  return stageCover(game);
 }
