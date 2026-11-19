@@ -96,6 +96,31 @@ export function createCity(random) {
     lamps.push({ x: ax + ROAD_HALF + 8, y: ay + ROAD_HALF + 8 });
   }
 
+  // Dressing props: beach umbrellas along the sand and cargo stacks on the
+  // pier deck. Pure decoration — no collision — placed from the same seeded
+  // random as everything else so the city is identical on every load.
+  const props = [];
+  const UMBRELLA_COLORS = ['#e5534b', '#39d0ff', '#ffd14a', '#ff8c42', '#b06fc9'];
+  for (let x = 150; x < WORLD.width - 120; x += 165) {
+    props.push({
+      kind: 'umbrella',
+      x: x + randRange(random, -22, 22),
+      y: BEACH_Y + randRange(random, 42, 88),
+      r: randRange(random, 13, 18),
+      color: randPick(random, UMBRELLA_COLORS),
+    });
+  }
+  for (let i = 0; i < 9; i += 1) {
+    props.push({
+      kind: 'cargo',
+      x: PIER_X + randRange(random, 26, 120),
+      y: randRange(random, 620, 1400),
+      w: randRange(random, 44, 74),
+      h: randRange(random, 30, 46),
+      color: randPick(random, ['#8c5a2e', '#5f7263', '#7a4a3a', '#4a5a74']),
+    });
+  }
+
   // Collision helpers -------------------------------------------------------
   function collideCircle(x, y, r) {
     // World bounds and the sea.
@@ -135,5 +160,5 @@ export function createCity(random) {
     return null;
   }
 
-  return { buildings, trees, lamps, collideCircle, circleHitsBuilding };
+  return { buildings, trees, lamps, props, collideCircle, circleHitsBuilding };
 }

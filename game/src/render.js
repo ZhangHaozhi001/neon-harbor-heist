@@ -8,6 +8,36 @@ import { WORLD, VIEW, COLORS, GARAGE, HIDEOUT } from './config.js';
 import { AVENUES_X, AVENUES_Y, BEACH_Y, WATER_Y, PIER_X, ROAD_HALF } from './city.js';
 import { vehicleCorners } from './vehicles.js';
 
+// Port Marlowe lives at dusk: street lamps throw warm pools of light, some
+// rooftops carry neon signs, and a graded overlay warms the whole frame.
+// The lamp glow is a pre-rendered radial sprite so the per-frame cost is a
+// handful of drawImage calls, never a gradient allocation.
+let lampGlowSprite = null;
+function getLampGlow() {
+  if (lampGlowSprite) return lampGlowSprite;
+  const sprite = document.createElement('canvas');
+  sprite.width = 128;
+  sprite.height = 128;
+  const sctx = sprite.getContext('2d');
+  const grad = sctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,196,96,0.30)');
+  grad.addColorStop(0.55, 'rgba(255,170,80,0.12)');
+  grad.addColorStop(1, 'rgba(255,170,80,0)');
+  sctx.fillStyle = grad;
+  sctx.fillRect(0, 0, 128, 128);
+  lampGlowSprite = sprite;
+  return sprite;
+}
+
+const NEON_SIGNS = [
+  { word: 'BAR', color: '#ff5e8a' },
+  { word: 'HOTEL', color: '#39d0ff' },
+  { word: 'CLUB NEON', color: '#b06fc9' },
+  { word: 'DINER', color: '#ffd14a' },
+  { word: '24H PAWN', color: '#57ffb0' },
+  { word: 'MARINA', color: '#4fc3ff' },
+];
+
 export function drawWorld(ctx, game) {
   const cam = game.camera;
   const shakeX = (Math.random() - 0.5) * game.effects.shake;
@@ -82,6 +112,56 @@ export function drawWorld(ctx, game) {
         ctx.fillRect(b.x + 10 + cx * 20, b.y + 10 + cy * 20, 9, 11);
       }
     }
+    // Roughly one building in three carries a neon sign along its top edge:
+    // a glowing backing strip, the word itself, and a soft halo spilling
+    // onto the roof. The sign is chosen from the building's seed so it is
+    // stable across frames and loads.
+    const signIndex = Math.floor(b.seed * 89);
+    if (signIndex % 3 === 0 && b.w >= 84) {
+      const sign = NEON_SIGNS[signIndex % NEON_SIGNS.length];
+      ctx.save();
+      ctx.shadowColor = sign.color;
+      ctx.shadowBlur = 13;
+      ctx.fillStyle = sign.color;
+      ctx.globalAlpha = 0.28;
+      ctx.fillRect(b.x + 8, b.y + 1, b.w - 16, 13);
+      ctx.globalAlpha = 1;
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(sign.word, b.x + b.w / 2, b.y + 11);
+      ctx.restore();
+    }
+  }
+
+  // Dressing props: cargo stacks on the pier, umbrellas on the beach.
+  for (const prop of game.city.props) {
+    if (prop.x < left - 90 || prop.x > right + 90 || prop.y < top - 90 || prop.y > bottom + 90) continue;
+    if (prop.kind === 'cargo') {
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.fillRect(prop.x - prop.w / 2 + 4, prop.y - prop.h / 2 + 5, prop.w, prop.h);
+      ctx.fillStyle = prop.color;
+      ctx.fillRect(prop.x - prop.w / 2, prop.y - prop.h / 2, prop.w, prop.h);
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(prop.x - prop.w / 2, prop.y - prop.h / 2, prop.w, prop.h);
+      ctx.beginPath();
+      ctx.moveTo(prop.x - prop.w / 2, prop.y);
+      ctx.lineTo(prop.x + prop.w / 2, prop.y);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath();
+      ctx.arc(prop.x + 3, prop.y + 4, prop.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = prop.color;
+      ctx.beginPath();
+      ctx.arc(prop.x, prop.y, prop.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.beginPath();
+      ctx.arc(prop.x, prop.y, prop.r * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   // Trees and lamps.
@@ -98,10 +178,19 @@ export function drawWorld(ctx, game) {
     ctx.arc(t.x - t.r * 0.3, t.y - t.r * 0.3, t.r * 0.55, 0, Math.PI * 2);
     ctx.fill();
   }
+  // Lamp posts, each with its pool of warm light on the asphalt.
+  const glow = getLampGlow();
+  for (const lamp of game.city.lamps) {
+    if (lamp.x < left - 70 || lamp.x > right + 70 || lamp.y < top - 70 || lamp.y > bottom + 70) continue;
+    ctx.drawImage(glow, lamp.x - 64, lamp.y - 64, 128, 128);
+  }
   ctx.fillStyle = '#3c4046';
   for (const lamp of game.city.lamps) {
     if (lamp.x < left || lamp.x > right || lamp.y < top || lamp.y > bottom) continue;
     ctx.fillRect(lamp.x - 2, lamp.y - 2, 4, 4);
+    ctx.fillStyle = '#ffd9a0';
+    ctx.fillRect(lamp.x - 1, lamp.y - 1, 2, 2);
+    ctx.fillStyle = '#3c4046';
   }
 
   // Skid marks under everything that moves.
@@ -192,6 +281,24 @@ export function drawWorld(ctx, game) {
   }
 
   ctx.restore();
+
+  // Dusk grade, in screen space: a cool violet wash from the top of the
+  // frame, a warm band low over the harbour, and a soft vignette so the
+  // centre of the action stays the brightest thing on screen.
+  const sky = ctx.createLinearGradient(0, 0, 0, VIEW.height);
+  sky.addColorStop(0, 'rgba(24,16,54,0.20)');
+  sky.addColorStop(0.45, 'rgba(24,16,54,0)');
+  sky.addColorStop(1, 'rgba(255,110,50,0.07)');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+  const vignette = ctx.createRadialGradient(
+    VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.42,
+    VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.95,
+  );
+  vignette.addColorStop(0, 'rgba(8,6,20,0)');
+  vignette.addColorStop(1, 'rgba(8,6,20,0.26)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
 }
 
 function drawLot(ctx, x, y, color, label) {
